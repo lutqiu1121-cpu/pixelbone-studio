@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自适应图标前景：居中的白色「像素骨骼」骨形，斜置 45°，落在 72dp 安全区内 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:pivotX="54"
+        android:pivotY="54"
+        android:rotation="-45">
+
+        <!-- 骨干 -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M34,50 H74 A4,4 0 0 1 78,54 A4,4 0 0 1 74,58 H34 A4,4 0 0 1 30,54 A4,4 0 0 1 34,50 Z" />
+
+        <!-- 四个端头（上下各两个圆角凸起） -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M22,50 a8,8 0 1 0 16,0 a8,8 0 1 0 -16,0 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M22,58 a8,8 0 1 0 16,0 a8,8 0 1 0 -16,0 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M70,50 a8,8 0 1 0 16,0 a8,8 0 1 0 -16,0 Z" />
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M70,58 a8,8 0 1 0 16,0 a8,8 0 1 0 -16,0 Z" />
+    </group>
+</vector>

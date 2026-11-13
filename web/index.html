@@ -1,0 +1,1384 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<!-- 禁止浏览器自身缩放，把双指手势完整交给画布处理 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- 强制横屏视口声明；JS 侧同时监听 orientationchange 重置视图 -->
+<meta name="screen-orientation" content="landscape">
+<title>像素骨骼动画工具 · PixelBone Studio</title>
+<style>
+/* ============================================================
+   一、现代极简（Modern Minimalist）浅色主题
+   米白背景 #F7F7F9 / 纯白面板 #FFFFFF / 深灰文字 #333 / 浅灰辅助 #888
+   微弱弥散阴影 + 12px 圆角；所有强调色统一由 --primary 驱动。
+   ============================================================ */
+:root{
+  /* 主题色：顶部颜色选择器会动态改写此变量，全局即时换肤 */
+  --primary:#007AFF;
+  --primary-soft:rgba(0,122,255,.14);
+  --bg:#F7F7F9;
+  --panel:rgba(255,255,255,.76);   /* 半透明白基底，配合磨砂玻璃 */
+  --solid:#FFFFFF;
+  --line:#E8E8ED;
+  --field:#F0F0F2;
+  --txt:#333333;
+  --sub:#888888;
+  --shadow:0 8px 24px rgba(0,0,0,.06);
+}
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);color:var(--txt);
+  font:13px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#stage{position:absolute;inset:0;width:100%;height:100%;display:block;
+  touch-action:none;image-rendering:pixelated;background:var(--bg)}
+button,input,select{font:inherit;color:inherit}
+
+/* 按钮：无粗边框、圆角、平滑过渡的 Hover / Active */
+button{background:var(--solid);border:1px solid var(--line);border-radius:9px;padding:7px 10px;
+  min-height:36px;font-size:12px;cursor:pointer;white-space:nowrap;color:var(--txt);
+  transition:background .18s ease,border-color .18s ease,box-shadow .18s ease,
+             transform .12s ease,color .18s ease,filter .18s ease}
+button:hover{background:var(--field);border-color:#DBDBE3;box-shadow:0 2px 8px rgba(0,0,0,.05)}
+button:active{transform:scale(.97);background:#E9E9EF}
+button.on{background:var(--primary);border-color:var(--primary);color:#fff;
+  box-shadow:0 4px 14px var(--primary-soft)}
+button.on:hover{background:var(--primary);filter:brightness(1.07);border-color:var(--primary)}
+button.danger{color:#D9534F}
+button.danger:hover{background:#FDF4F3;border-color:#F1CFCD}
+button:focus-visible,select:focus-visible,input[type=number]:focus-visible,
+input[type=color]:focus-visible{outline:2px solid var(--primary);outline-offset:2px}
+input[type=checkbox]{accent-color:var(--primary)}
+
+/* 自定义 Range：4px 细轨道、主题色进度条、圆润滑块（WebKit + Firefox） */
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;
+  margin:4px 0 8px;background:transparent;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:4px;
+  background:linear-gradient(90deg,var(--primary) var(--pct,50%),#E3E3E9 var(--pct,50%))}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;
+  margin-top:-6px;border-radius:50%;background:#fff;border:2px solid var(--primary);
+  box-shadow:0 1px 5px rgba(0,0,0,.16);transition:transform .15s ease,box-shadow .15s ease}
+input[type=range]:active::-webkit-slider-thumb{transform:scale(1.18);
+  box-shadow:0 2px 10px var(--primary-soft)}
+input[type=range]::-moz-range-track{height:4px;border-radius:4px;background:#E3E3E9}
+input[type=range]::-moz-range-progress{height:4px;border-radius:4px;background:var(--primary)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:#fff;
+  border:2px solid var(--primary);box-shadow:0 1px 5px rgba(0,0,0,.16)}
+
+/* 输入框 / 下拉：浅灰底、无粗边框，焦点用主题色 */
+input[type=number],select{background:var(--field);border:1px solid transparent;border-radius:8px;
+  padding:6px 9px;width:100%;min-height:34px;color:var(--txt);
+  transition:border-color .18s ease,box-shadow .18s ease}
+input[type=number]:focus,select:focus{outline:none;border-color:var(--primary);
+  box-shadow:0 0 0 3px var(--primary-soft)}
+select{appearance:none}
+label{display:block;color:var(--sub);font-size:11px;margin-top:8px}
+label b{color:var(--txt)}
+.row{display:flex;gap:8px;align-items:center}
+.row>*{flex:1}
+.hint{color:var(--sub);font-size:11px;line-height:1.6}
+.hint b{color:var(--txt)}
+.hidden{display:none!important}
+
+/* 顶部工具条：窄屏横向滑动，主题色选择器固定在右侧 */
+#topbar{position:absolute;top:0;left:0;right:0;height:54px;z-index:20;
+  display:flex;align-items:center;gap:8px;padding:6px 10px;overflow:hidden;
+  background:rgba(255,255,255,.86);border-bottom:1px solid var(--line);
+  box-shadow:0 2px 12px rgba(0,0,0,.035);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+/* 按钮区单独横向滚动，右侧主题色区常驻可见，二者互不重叠 */
+#tbScroll{flex:1 1 auto;min-width:0;display:flex;align-items:center;gap:6px;
+  overflow-x:auto;overflow-y:hidden;scrollbar-width:none;touch-action:pan-x}
+#tbScroll::-webkit-scrollbar{display:none}
+#brand{font-weight:700;font-size:13px;letter-spacing:.3px;padding:0 6px;white-space:nowrap;color:var(--txt)}
+#brand small{display:block;font-weight:400;font-size:10px;color:var(--sub)}
+.sep{width:1px;height:26px;background:var(--line);flex:0 0 1px}
+/* 与滚动按钮区并列，始终停在工具条最右侧 */
+#colorWrap{flex:0 0 auto;display:flex;align-items:center;gap:7px;padding-left:4px}
+#colorWrap span{font-size:11px;color:var(--sub);white-space:nowrap}
+#colorPicker{width:34px;height:34px;flex:0 0 34px;padding:0;min-height:0;border:none;
+  background:transparent;cursor:pointer;border-radius:10px}
+#colorPicker::-webkit-color-swatch-wrapper{padding:0}
+#colorPicker::-webkit-color-swatch{border:2px solid #fff;border-radius:9px;
+  box-shadow:0 0 0 1px var(--line),0 2px 6px rgba(0,0,0,.08)}
+#colorPicker::-moz-color-swatch{border:2px solid #fff;border-radius:9px}
+
+/* 浮动面板：磨砂玻璃（blur 16px + 半透明白）+ 12px 圆角 + 弥散阴影 */
+/* bottom 由 JS 按时间轴真实高度写入 --tl-h，保证面板永不压住时间轴 */
+.panel{position:absolute;top:64px;bottom:var(--tl-h,150px);z-index:21;
+  width:min(268px,74vw);
+  background:var(--panel);border:1px solid rgba(255,255,255,.9);border-radius:12px;
+  box-shadow:var(--shadow);
+  backdrop-filter:blur(16px) saturate(1.4);-webkit-backdrop-filter:blur(16px) saturate(1.4);
+  display:flex;flex-direction:column;overflow:hidden}
+#assetPanel{left:10px}
+#propPanel{right:10px}
+.panel.collapsed{width:auto;bottom:auto;max-height:none}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:9px 12px;background:rgba(255,255,255,.5);cursor:pointer;
+  font-weight:600;font-size:12px;border-bottom:1px solid rgba(232,232,237,.7)}
+.panel-head .caret{color:var(--sub);font-size:11px}
+.panel-body{flex:1 1 auto;min-height:0;padding:9px 12px 13px;
+  overflow-y:auto;overscroll-behavior:contain}
+.panel.collapsed .panel-body{display:none}
+.panel.collapsed .panel-head{border:0}
+
+/* 全局设置卡（边缘拉伸），纯白底 */
+.global-box{background:rgba(255,255,255,.82);border:1px solid var(--line);
+  border-radius:10px;padding:9px 10px;margin-bottom:11px}
+.global-box .hint{margin:4px 0 0}
+.switch-row{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  font-size:12px;font-weight:600}
+.switch-row small{display:block;font-weight:400;color:var(--sub);font-size:10px}
+.switch{position:relative;width:38px;height:22px;margin:0;flex:0 0 38px;cursor:pointer;display:block}
+/* 透明 checkbox 置于最上层：点击直接命中控件，视觉层只负责呈现 */
+.switch input{position:absolute;inset:0;opacity:0;width:100%;height:100%;margin:0;
+  cursor:pointer;z-index:2}
+.switch i{position:absolute;inset:0;border-radius:22px;background:#DCDCE3;
+  pointer-events:none;transition:background .2s ease,box-shadow .2s ease}
+.switch i::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;
+  border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);
+  transition:transform .2s ease}
+.switch input:checked + i{background:var(--primary)}
+.switch input:checked + i::after{transform:translateX(16px)}
+.switch input:focus-visible + i{box-shadow:0 0 0 3px var(--primary-soft)}
+
+/* 素材缩略图 */
+#assetList{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;max-height:210px;overflow-y:auto}
+.asset{width:64px;border:1px solid var(--line);border-radius:8px;padding:4px;
+  background:var(--solid);cursor:pointer;text-align:center;
+  transition:border-color .18s ease,box-shadow .18s ease,transform .12s ease}
+.asset:hover{border-color:var(--primary);box-shadow:0 2px 10px var(--primary-soft)}
+.asset:active{transform:scale(.96)}
+.asset canvas,.asset img{width:100%;height:48px;object-fit:contain;image-rendering:pixelated;display:block}
+.asset span{display:block;font-size:10px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 底部关键帧时间轴 */
+#timeline{position:absolute;left:0;right:0;bottom:0;z-index:19;
+  background:rgba(255,255,255,.88);border-top:1px solid var(--line);
+  box-shadow:0 -8px 24px rgba(0,0,0,.04);
+  padding-bottom:env(safe-area-inset-bottom);
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+#tlHead{display:flex;align-items:center;gap:6px;padding:6px 10px;overflow-x:auto;
+  scrollbar-width:none;white-space:nowrap}
+#tlHead::-webkit-scrollbar{display:none}
+#tlTitle{font-weight:600;font-size:12px;padding:0 4px}
+#frameStrip{display:flex;gap:6px;padding:6px 10px 10px;overflow-x:auto;overflow-y:hidden;
+  min-height:78px;touch-action:pan-x}
+#timeline.collapsed #frameStrip{display:none}
+.frame-card{flex:0 0 62px;border:1px solid var(--line);border-radius:9px;background:var(--solid);
+  padding:4px;text-align:center;cursor:pointer;
+  transition:border-color .18s ease,box-shadow .18s ease,transform .12s ease}
+.frame-card:hover{box-shadow:0 2px 10px rgba(0,0,0,.06)}
+.frame-card:active{transform:scale(.96)}
+.frame-card.active{border-color:var(--primary);box-shadow:0 0 0 1px var(--primary) inset,0 3px 12px var(--primary-soft)}
+.frame-card canvas{width:52px;height:52px;display:block;image-rendering:pixelated;
+  background-color:#FFFFFF;background-image:linear-gradient(45deg,#EFF0F4 25%,transparent 25%,transparent 75%,#EFF0F4 75%),
+  linear-gradient(45deg,#EFF0F4 25%,transparent 25%,transparent 75%,#EFF0F4 75%);
+  background-size:10px 10px;background-position:0 0,5px 5px}
+.frame-card span{display:block;font-size:10px;color:var(--sub);margin-top:2px}
+
+/* 锚点拾取覆盖层：整数倍最近邻放大，点选具体某一像素 */
+#pivotOverlay{position:fixed;inset:0;z-index:50;background:rgba(247,247,249,.96);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:12px}
+#pivotOverlay h3{margin:0;font-size:14px;font-weight:600}
+#pivotHint{color:var(--sub);font-size:11px;text-align:center}
+#pickerBox{max-width:100vw;max-height:calc(100vh - 190px);overflow:auto;
+  border:1px solid var(--line);border-radius:10px;background:var(--solid);box-shadow:var(--shadow)}
+#pivotCanvas{display:block;image-rendering:pixelated;cursor:crosshair;touch-action:none}
+#toast{position:fixed;left:50%;bottom:150px;transform:translateX(-50%) translateY(10px);
+  z-index:80;background:var(--solid);color:var(--txt);border:1px solid var(--line);
+  border-radius:20px;padding:8px 16px;font-size:12px;box-shadow:var(--shadow);
+  opacity:0;pointer-events:none;transition:opacity .2s ease,transform .2s ease}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* 竖屏友好提示：不拦截任何指针事件，不遮挡画布操作 */
+#rotateTip{position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:30;
+  background:var(--primary);color:#fff;border-radius:20px;padding:6px 14px;
+  font-size:11px;box-shadow:var(--shadow);pointer-events:none;display:none;opacity:0;
+  transition:opacity .25s ease}
+@media (orientation:portrait){#rotateTip{display:block;opacity:.94}}
+</style>
+</head>
+<body>
+
+<!-- 主画布：所有骨骼、图片、连线都画在这里 -->
+<canvas id="stage"></canvas>
+
+<!-- 顶部工具条 -->
+<header id="topbar">
+  <!-- 按钮区：窄屏横向滚动；与右侧主题色区并列，互不遮挡 -->
+  <div id="tbScroll">
+    <div id="brand">像素骨骼动画工具<small>PixelBone Studio · FK / 无插值 / Godot 4</small></div>
+    <div class="sep"></div>
+    <button id="toolSelect" class="on">✋ 选择</button>
+    <button id="toolAdd">➕ 加节点</button>
+    <button id="btnUpload">📂 导入 PNG</button>
+    <button id="btnPlay">▶ 播放</button>
+    <button id="btnExport">⬇ 导出图集+JSON</button>
+    <button id="btnReset">⤢ 视图复位</button>
+    <button id="btnAsset">☰ 素材</button>
+    <button id="btnProp">⚙ 参数</button>
+  </div>
+  <!-- 自定义主题色：默认现代蓝 #007AFF，常驻工具条最右侧 -->
+  <div id="colorWrap"><span>主题色</span>
+    <input type="color" id="colorPicker" value="#007AFF" title="自定义主题色（全局换肤）">
+  </div>
+</header>
+
+<!-- 左侧：素材库 -->
+<section id="assetPanel" class="panel collapsed">
+  <div class="panel-head" data-toggle="assetPanel"><span>📂 素材库</span><span class="caret">▸</span></div>
+  <div class="panel-body">
+    <button id="btnUpload2" style="width:100%">选择多张透明 PNG</button>
+    <div id="assetList"></div>
+    <p class="hint">先选中一个节点，再点上面的素材 → 进入锚点拾取 → 点击图片上任意像素，该像素即成为该节点的旋转中心。<br>锚点使用<b>整数像素坐标</b>，保证旋转时不会出现半像素模糊。</p>
+  </div>
+</section>
+
+<!-- 右侧：节点参数 -->
+<section id="propPanel" class="panel collapsed">
+  <div class="panel-head" data-toggle="propPanel"><span>⚙ 节点参数</span><span class="caret">▸</span></div>
+  <div class="panel-body">
+    <!-- 全局设置：边缘拉伸（与是否选中节点无关） -->
+    <div id="globalSettings" class="global-box">
+      <div class="switch-row">
+        <span>边缘拉伸<small>Edge Stretch / 防穿模补缝</small></span>
+        <label class="switch"><input type="checkbox" id="edgeEnabled"><i></i></label>
+      </div>
+      <label>扩展像素：<b id="edgeVal">1 px</b>（0–4px）</label>
+      <input type="range" id="edgePixels" min="0" max="4" step="1" value="1">
+      <p class="hint">导入图片或拖动滑块时，用<b>离屏 Canvas</b>逐像素遍历 Alpha：把上/下/左/右相邻的非透明像素<b>原样复制</b>到透明像素，向外硬扩 N 像素。不做任何加权、平均或插值，结果缓存后供渲染与导出直接读取。</p>
+    </div>
+    <div id="noNode" class="hint">未选中节点。用「加节点」在画布上点击创建，或用「选择」点已有小圆圈。</div>
+    <div id="propBody" class="hidden">
+      <div style="font-weight:600;margin-bottom:6px" id="nodeName">—</div>
+      <label>父节点（FK 层级）</label>
+      <select id="parentSel"></select>
+      <label>旋转 Rotation：<b id="rotVal">0°</b></label>
+      <input type="range" id="rot" min="-360" max="360" step="1" value="0">
+      <label>缩放 Scale：<b id="scaleVal">1.00</b></label>
+      <input type="range" id="scale" min="0.1" max="4" step="0.05" value="1">
+      <div class="row">
+        <div><label>局部 X</label><input type="number" id="posX" step="1" value="0"></div>
+        <div><label>局部 Y</label><input type="number" id="posY" step="1" value="0"></div>
+      </div>
+      <label>挂载图片 / 锚点</label>
+      <div id="imgInfo" class="hint">未挂载图片</div>
+      <div class="row" style="margin-top:8px">
+        <button id="btnRepick">重设锚点</button>
+        <button id="btnClearImg" class="danger">移除图片</button>
+      </div>
+      <button id="btnDelNode" class="danger" style="width:100%;margin-top:8px">删除该节点</button>
+      <hr style="border:0;border-top:1px solid var(--line);margin:12px 0">
+      <label class="hint"><input type="checkbox" id="attachToSelected" checked style="width:auto;min-height:0;vertical-align:middle"> 新建节点自动挂到当前节点下（连成骨架）</label>
+      <p class="hint">父节点旋转时，子节点的坐标会经过父的旋转矩阵，自动跟着转 —— 这就是 FK。改父节点时会自动补偿局部坐标，保持世界位置不跳。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 底部：关键帧时间轴（纯硬切换，不做任何补间） -->
+<footer id="timeline">
+  <div id="tlHead">
+    <span id="tlTitle">🎞 关键帧</span>
+    <span id="frameCount" class="hint">0 帧</span>
+    <span class="hint" style="max-width:210px;white-space:normal;line-height:1.2">添加帧 → 摆弄骨骼自动写入该帧；帧间硬切换，不做补间</span>
+    <button id="btnAddFrame">＋ 添加帧</button>
+    <button id="btnOverwrite">⟳ 覆盖当前帧</button>
+    <button id="btnDelFrame" class="danger">－ 删除帧</button>
+    <span class="hint">时长</span>
+    <input type="number" id="durInput" value="100" min="16" max="5000" step="10" style="width:76px;flex:0 0 76px">
+    <span class="hint">ms</span>
+    <button id="btnTl" style="margin-left:auto">▾ 折叠</button>
+  </div>
+  <div id="frameStrip"></div>
+</footer>
+
+<!-- 锚点拾取层 -->
+<div id="pivotOverlay" class="hidden">
+  <h3>设定旋转中心（Pivot / 锚点）</h3>
+  <div id="pivotHint"></div>
+  <div id="pickerBox"><canvas id="pivotCanvas"></canvas></div>
+  <div class="row" style="flex:0 0 auto;width:min(320px,90vw)">
+    <button id="magMinus">－ 缩小</button>
+    <button id="magPlus">＋ 放大</button>
+    <button id="pivotCancel">取消</button>
+  </div>
+  <p class="hint" style="max-width:320px;text-align:center">点中哪个像素，哪个像素的左上角就成为旋转中心；节点圆圈会精确落在该点。</p>
+</div>
+
+<div id="rotateTip">↻ 建议横屏使用，旋转后视图会自动复位</div>
+<div id="toast"></div>
+<input type="file" id="fileInput" multiple accept="image/png,image/*" hidden>
+
+<script>
+'use strict';
+/* ================================================================================
+ * 像素骨骼动画工具 —— 单文件实现，无任何第三方依赖
+ *
+ * 目录：
+ *  0. 全局状态与数据结构
+ *  1. 数学工具：2D 仿射矩阵 / FK 正向动力学 / 求逆与分解
+ *  2. 视图变换：屏幕 ⇄ 世界，单指平移、双指捏合 / 屏幕旋转复位
+ *  2.5 主题色与自定义滑块：--primary 全局换肤 + 进度条同步
+ *  2.6 边缘拉伸：离屏 Canvas 预处理 + 缓存（防穿模补缝，纯 Nearest）
+ *  3. 渲染管线：全部关闭 imageSmoothingEnabled，保持锐利像素
+ *  4. 指针手势：单指拖拽节点 / 平移、双指缩放、点击建节点
+ *  5. 素材导入与自定义锚点拾取
+ *  6. 节点编辑与参数面板
+ *  7. 关键帧时间轴（硬切换，无补间）
+ *  8. 导出：包围盒计算 → Sprite Sheet PNG → Godot 4 AtlasTexture JSON
+ *  9. 初始化与事件绑定
+ * ============================================================================== */
+
+/* ---------- 0. 全局状态 ---------- */
+const $ = s => document.querySelector(s);
+const stage = $('#stage');
+const ctx = stage.getContext('2d', { alpha: false });
+let DPR = Math.min(window.devicePixelRatio || 1, 3);
+let cssW = 0, cssH = 0;
+
+const RAD = Math.PI / 180;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+const state = {
+  view: { x: 0, y: 0, zoom: 4 },   // 视图：世界→屏幕的平移与整数倍附近的缩放
+  nodes: [],                        // 骨骼节点
+  assets: [],                       // 上传的 PNG 素材
+  selectedId: null,                 // 当前选中节点
+  tool: 'select',                   // 'select' | 'add'
+  frames: [],                       // 关键帧 [{duration, pose}]
+  selectedFrame: -1,                // 当前帧；编辑姿态会自动同步回这一帧
+  playing: false, playTimer: null,
+  idSeed: 1,
+  // 升级：主题色（CSS 变量 --primary 的 JS 镜像，供 Canvas 绘制读取）
+  primary: '#007AFF', primarySoft: 'rgba(0,122,255,.14)',
+  // 升级：边缘拉伸全局开关与扩展像素数
+  edgeEnabled: false, edgePixels: 1,
+  // 锚点拾取上下文
+  pickNodeId: null, pickAssetIdx: -1, pickerMag: null
+};
+
+/* 节点结构：
+ * { id, name, x, y, rotation, scale, parentId, img, pivot:{x,y} }
+ *  x/y 是「相对父节点」的局部坐标；rotation 单位度；scale 为均匀缩放。
+ *  img 是 assets 下标；pivot 是原图内的整数像素坐标，图片绘制前先平移 -pivot。
+ * 关键帧只快照 x/y/rotation/scale，图片与锚点属于静态绑定，不参与动画。
+ */
+const find = id => state.nodes.find(n => n.id === +id) || null;
+const getSelected = () => state.selectedId == null ? null : find(state.selectedId);
+const findAsset = i => state.assets[i] || null;
+
+let bboxCache = null;
+const invalidateBBox = () => { bboxCache = null; };
+
+function toast(msg){
+  const t = $('#toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 1900);
+}
+
+/* ---------- 1. 数学工具：仿射矩阵与 FK ----------
+ * Canvas transform(a,b,c,d,e,f) 对应：
+ *   x' = a*x + c*y + e
+ *   y' = b*x + d*y + f
+ * 采用「列主序」记忆，乘法 M = P * L 表示先做本地 L 再做父 P。
+ */
+const identity = () => ({ a:1, b:0, c:0, d:1, e:0, f:0 });
+
+function mul(P, L){
+  return {
+    a: P.a*L.a + P.c*L.b,
+    b: P.b*L.a + P.d*L.b,
+    c: P.a*L.c + P.c*L.d,
+    d: P.b*L.c + P.d*L.d,
+    e: P.a*L.e + P.c*L.f + P.e,
+    f: P.b*L.e + P.d*L.f + P.f
+  };
+}
+
+/* 求完整逆矩阵，用于「换父节点时保持世界变换不变」 */
+function invert(M){
+  const det = M.a*M.d - M.b*M.c || 1e-8;
+  return {
+    a:  M.d/det, b: -M.b/det, c: -M.c/det, d: M.a/det,
+    e: (M.c*M.f - M.d*M.e)/det,
+    f: (M.b*M.e - M.a*M.f)/det
+  };
+}
+
+/* 本地变换：平移 → 旋转 → 缩放。
+ * 关键帧 pose 可以覆盖节点当前值；pose 里没有的节点沿用当前值。 */
+function localMatrix(n, pose){
+  const p = pose ? pose[n.id] : null;
+  const x = p ? p.x : n.x, y = p ? p.y : n.y;
+  const r = (p ? p.rotation : n.rotation) * RAD;
+  const s = p ? p.scale : n.scale;
+  const co = Math.cos(r)*s, si = Math.sin(r)*s;
+  return { a:co, b:si, c:-si, d:co, e:x, f:y };
+}
+
+/* FK 核心：递归计算每个节点的「世界矩阵」。
+ * 子节点世界矩阵 = 父世界矩阵 × 本地矩阵，
+ * 因此父旋转/缩放会自然传递到所有后代，无需手动同步角度。 */
+function worldMatrices(pose){
+  const out = new Map(), visiting = new Set();
+  function calc(n){
+    if (out.has(n.id)) return out.get(n.id);
+    if (visiting.has(n.id)) return identity();       // 防御异常循环
+    visiting.add(n.id);
+    const parent = n.parentId != null ? find(n.parentId) : null;
+    const P = parent ? calc(parent) : identity();
+    const M = mul(P, localMatrix(n, pose));
+    visiting.delete(n.id);
+    out.set(n.id, M);
+    return M;
+  }
+  state.nodes.forEach(calc);
+  return out;
+}
+
+/* 节点深度，用于绘制排序（父先画、子后画，子覆盖父） */
+function nodeDepth(n){
+  let d = 0, cur = n, seen = new Set();
+  while (cur && cur.parentId != null && !seen.has(cur.id) && d < 64){
+    seen.add(cur.id); cur = find(cur.parentId); d++;
+  }
+  return d;
+}
+
+/* 判断 candId 是否等于 rootId 或是 rootId 的后代，用于禁止成环 */
+function isDescendant(candId, rootId){
+  let cur = candId, guard = 0;
+  while (cur != null && guard++ < 1000){
+    if (+cur === +rootId) return true;
+    const n = find(cur);
+    cur = n ? n.parentId : null;
+  }
+  return false;
+}
+
+/* 保持世界变换不变地更换父节点：newLocal = inverse(新父世界) × 旧世界 */
+function reparentKeepWorld(n, newParentId, oldMats){
+  // mats 必须是「改动 parentId 之前」算好的世界矩阵快照；
+  // 父节点自身的世界矩阵不会因为子节点换父而改变，可直接复用。
+  const mats = oldMats || worldMatrices(null);
+  const oldW = mats.get(n.id) || identity();
+  n.parentId = newParentId;
+  const parentW = (newParentId != null ? mats.get(newParentId) : null) || identity();
+  const L = mul(invert(parentW), oldW);
+  n.x = L.e; n.y = L.f;
+  n.rotation = Math.atan2(L.b, L.a) / RAD;
+  n.scale = Math.hypot(L.a, L.b) || 1;
+}
+
+/* ---------- 2. 视图变换 ---------- */
+function resize(){
+  cssW = window.innerWidth; cssH = window.innerHeight;
+  DPR = Math.min(window.devicePixelRatio || 1, 3);
+  stage.width  = Math.round(cssW * DPR);
+  stage.height = Math.round(cssH * DPR);
+  stage.style.width = cssW + 'px';
+  stage.style.height = cssH + 'px';
+}
+function screenToWorld(sx, sy){
+  return { x:(sx - state.view.x)/state.view.zoom, y:(sy - state.view.y)/state.view.zoom };
+}
+function worldToScreen(wx, wy){
+  return { x:wx*state.view.zoom + state.view.x, y:wy*state.view.zoom + state.view.y };
+}
+function resetView(){
+  state.view.zoom = 4;
+  state.view.x = Math.round(cssW/2);
+  state.view.y = Math.round((cssH - 110)/2);
+  render();
+}
+/* 屏幕位移换算成父局部位移（拖动节点时用） */
+function screenDeltaToLocal(wdx, wdy, parentMat){
+  const P = parentMat || identity();
+  const det = P.a*P.d - P.b*P.c || 1e-8;
+  return {
+    x:(P.d*wdx - P.c*wdy)/det,
+    y:(-P.b*wdx + P.a*wdy)/det
+  };
+}
+
+/* ---------- 2.5 主题色与自定义滑块 ----------
+ * 所有 CSS 选中态 / 焦点边框 / 轨道进度 / 卡片高亮都引用 var(--primary)；
+ * Canvas 里的节点高亮圆圈无法直接吃 CSS 变量，因此这里把同一个值镜像到
+ * state.primary，颜色选择器改值时同步刷新，保证「全局主题切换」无死角。 */
+function applyTheme(hex){
+  const root = document.documentElement;
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+  state.primary = hex;
+  state.primarySoft = `rgba(${r},${g},${b},.14)`;
+  root.style.setProperty('--primary', hex);
+  root.style.setProperty('--primary-soft', state.primarySoft);
+  syncAllRanges();
+  render();
+}
+/* 把 range 当前值换算成进度百分比，供 WebKit 轨道渐变使用 */
+function syncRangeFill(el){
+  const min = +el.min || 0, max = +el.max || 100;
+  const pct = max > min ? ((+el.value - min) / (max - min)) * 100 : 0;
+  el.style.setProperty('--pct', pct.toFixed(2) + '%');
+}
+function syncAllRanges(){ document.querySelectorAll('input[type=range]').forEach(syncRangeFill); }
+
+/* ---------- 2.6 边缘拉伸（Edge Stretch / 防穿模补缝） ----------
+ * 目的：骨骼旋转时相邻部件之间容易露出 1~2px 缝隙；透明边缘在后续引擎里
+ *       做线性采样 / mipmap 时也容易混入黑边。这里对原 PNG 做「硬边外扩」。
+ *
+ * 死命令（全部满足）：
+ *  1) 只在「图片导入」或「扩展像素滑块调整」时预处理，结果放进缓存；
+ *     渲染 / 缩略图 / 导出直接读缓存，绝不在每帧遍历像素（平板性能）。
+ *  2) 使用离屏 Canvas：优先 OffscreenCanvas，不支持时回退普通 canvas。
+ *  3) 逐像素遍历 Alpha 通道：透明像素从「上/下/左/右」四邻域里取第一个
+ *     非透明像素，直接复制其完整 RGBA；连做 N 轮 = 向外延伸 N 个像素。
+ *     没有任何加权、平均、模糊、双线性 —— 纯 Nearest 语义，边缘依旧锐利。
+ *  4) 外扩只发生在原图矩形内部，图片尺寸不变，故包围盒与整数锚点逻辑
+ *     完全不需要改动（保留原有底层逻辑）。
+ */
+function makeOffscreen(w, h){
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
+  const c = document.createElement('canvas'); c.width = w; c.height = h; return c;
+}
+function buildEdgeCache(a, N){
+  const cv = makeOffscreen(a.w, a.h);
+  const c = cv.getContext('2d', { willReadFrequently:true });
+  c.imageSmoothingEnabled = false;               // 1:1 拷贝，禁止任何重采样
+  c.clearRect(0, 0, a.w, a.h);
+  c.drawImage(a.img, 0, 0);
+  if (N > 0){
+    const w = a.w, h = a.h;
+    let src = c.getImageData(0, 0, w, h).data;   // 原始 RGBA 字节
+    for (let pass = 0; pass < N; pass++){
+      // 每一轮基于「上一轮」的结果，透明区便逐圈向外收缩 1 像素
+      const dst = new Uint8ClampedArray(src);
+      for (let y = 0; y < h; y++){
+        for (let x = 0; x < w; x++){
+          const i = (y*w + x) * 4;
+          if (src[i+3] !== 0) continue;         // 只处理 Alpha==0 的透明像素
+          const nb = [
+            y > 0   ? i - w*4 : -1,             // 上
+            y < h-1 ? i + w*4 : -1,             // 下
+            x > 0   ? i - 4   : -1,             // 左
+            x < w-1 ? i + 4   : -1              // 右
+          ];
+          for (const j of nb){
+            if (j < 0 || src[j+3] === 0) continue;
+            dst[i]   = src[j];   dst[i+1] = src[j+1];
+            dst[i+2] = src[j+2]; dst[i+3] = src[j+3];   // 整份 RGBA 直接复制
+            break;                                    // 不做混合，取第一个即用
+          }
+        }
+      }
+      src = dst;
+    }
+    const out = c.createImageData(w, h);
+    out.data.set(src);
+    c.putImageData(out, 0, 0);
+  }
+  return cv;                                     // 可直接作为 drawImage 的源
+}
+/* 滑块调整时按新 N 为所有素材预生成缓存；N 仅 0~4 五档，Map 命中即复用 */
+function rebuildEdgeCaches(){
+  const N = state.edgePixels;
+  state.assets.forEach(a => {
+    if (!a.edgeCache) a.edgeCache = new Map();
+    if (!a.edgeCache.has(N)) a.edgeCache.set(N, buildEdgeCache(a, N));
+  });
+  invalidateBBox(); refreshAssets(); render(); scheduleTimelineRefresh();
+}
+/* 渲染源：开关打开 → 读预处理缓存图；关闭 → 原始 PNG。
+ * 缓存缺失时按需补建，保证导入后再改 N 也不会出现空图。 */
+function getRenderImage(a){
+  if (!a || !a.img) return null;
+  if (!state.edgeEnabled) return a.img;
+  if (!a.edgeCache) a.edgeCache = new Map();
+  const N = state.edgePixels;
+  if (!a.edgeCache.has(N)) a.edgeCache.set(N, buildEdgeCache(a, N));
+  return a.edgeCache.get(N);
+}
+
+/* ---------- 3. 渲染管线 ----------
+ * 所有 Canvas（主画布 / 缩略图 / 导出图集 / 拾取层）在每次绘制前都显式
+ * 关闭 imageSmoothingEnabled，保证 drawImage 使用最近邻，放大不糊。
+ * 另外 CSS 上所有 canvas / img 都带 image-rendering:pixelated。
+ */
+function drawChecker(c, w, h, cell){
+  // 屏幕空间的棋盘格，仅用于表示「透明区域」，不参与导出
+  c.fillStyle = '#F7F7F9'; c.fillRect(0, 0, w, h);
+  c.fillStyle = '#EDEDF1';
+  const g = cell || 16;
+  for (let y = 0; y < h; y += g)
+    for (let x = 0; x < w; x += g)
+      if ((((x/g)|0) + ((y/g)|0)) & 1) c.fillRect(x, y, g, g);
+}
+
+/* 把一套姿态渲染到任意 ctx 上。
+ * 调用前 ctx 已设置好「世界坐标 → 目标画布像素」的基础变换；
+ * 这里对每个节点直接 setTransform 到它自己的完整世界矩阵（含父链）。
+ * pose 非 null 时（缩略图 / 导出），只绘制该帧快照里存在的节点，保证确定性。 */
+function renderPose(c, pose){
+  c.imageSmoothingEnabled = false;
+  const mats = worldMatrices(pose);
+  const order = [...state.nodes].sort((a,b) => nodeDepth(a) - nodeDepth(b));
+  for (const n of order){
+    if (pose && !pose[n.id]) continue;       // 该帧不存在这个节点 → 不画
+    const a = n.img != null ? findAsset(n.img) : null;
+    if (!a || !a.img) continue;
+    const M = mats.get(n.id);
+    if (!M) continue;
+    c.save();
+    c.transform(M.a, M.b, M.c, M.d, M.e, M.f);
+    // 关键：先按自定义锚点反向平移，图片的原点(0,0)即锚点像素，旋转围绕它发生
+    c.translate(-n.pivot.x, -n.pivot.y);
+    c.drawImage(getRenderImage(a), 0, 0);   // 直接使用预处理缓存，不每帧计算
+    c.restore();
+  }
+}
+
+function render(){
+  // 背景（屏幕空间，不受缩放影响）
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  drawChecker(ctx, cssW, cssH, 16);
+
+  // 世界空间：连线 + 图片
+  ctx.save();
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.translate(state.view.x, state.view.y);
+  ctx.scale(state.view.zoom, state.view.zoom);
+  ctx.imageSmoothingEnabled = false;
+  const mats = worldMatrices(null);
+  ctx.lineWidth = 1 / state.view.zoom;      // 连线恒定 1 屏幕像素
+  ctx.strokeStyle = '#C7CCD6';
+  for (const n of state.nodes){
+    if (n.parentId == null) continue;
+    const P = mats.get(n.parentId), M = mats.get(n.id);
+    if (!P || !M) continue;
+    ctx.beginPath(); ctx.moveTo(P.e, P.f); ctx.lineTo(M.e, M.f); ctx.stroke();
+  }
+  renderPose(ctx, null);
+  ctx.restore();
+
+  // 叠加层（屏幕空间）：节点圆圈恒定大小，触屏好点
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  ctx.imageSmoothingEnabled = false;
+  // 世界原点十字
+  const o = worldToScreen(0, 0);
+  ctx.strokeStyle = 'rgba(90,100,120,.32)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(o.x-10,o.y); ctx.lineTo(o.x+10,o.y);
+  ctx.moveTo(o.x,o.y-10); ctx.lineTo(o.x,o.y+10); ctx.stroke();
+  for (const n of state.nodes){
+    const M = mats.get(n.id); if (!M) continue;
+    const p = worldToScreen(M.e, M.f);
+    const sel = n.id === state.selectedId;
+    if (sel){
+      // 选中高亮光晕：由 --primary 派生的柔和色，画布侧与 CSS 主题同步
+      ctx.beginPath(); ctx.arc(p.x, p.y, 12, 0, Math.PI*2);
+      ctx.fillStyle = state.primarySoft; ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(p.x, p.y, sel ? 8 : 6, 0, Math.PI*2);
+    ctx.fillStyle = sel ? state.primary : '#FFFFFF';   // 节点高亮圆圈 = var(--primary)
+    ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = sel ? '#FFFFFF' : '#AEB4C0'; ctx.stroke();
+    if (n.img != null){
+      // 有图片的节点额外画一个锚点小方块，直观看到整数旋转中心
+      ctx.fillStyle = state.primary;
+      ctx.fillRect(p.x-2, p.y-2, 4, 4);
+    }
+  }
+}
+
+/* ---------- 4. 指针手势 ----------
+ * 用 Pointer Events 统一鼠标 / 触摸 / 触控笔。
+ * 单指：命中节点 → 拖动该节点；空白处 → 平移视图；「加节点」模式下轻点 → 建节点。
+ * 双指：以两指中点为锚点捏合缩放，同时中点移动带来平移。
+ * 移动超过 5px 视为拖拽，不再触发「点击」。
+ */
+const pointers = new Map();
+let gesture = null, downInfo = null;
+const dist = (p,q) => Math.hypot(p.x-q.x, p.y-q.y);
+const mid  = (p,q) => ({ x:(p.x+q.x)/2, y:(p.y+q.y)/2 });
+
+function hitNode(sx, sy){
+  const mats = worldMatrices(null);
+  for (let i = state.nodes.length - 1; i >= 0; i--){
+    const n = state.nodes[i], M = mats.get(n.id); if (!M) continue;
+    const p = worldToScreen(M.e, M.f);
+    if (Math.hypot(p.x - sx, p.y - sy) <= 16) return n;  // 32px 命中圈，手指友好
+  }
+  return null;
+}
+
+stage.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  try { stage.setPointerCapture(e.pointerId); } catch(_){}
+  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+
+  if (pointers.size === 2){
+    const [p1, p2] = [...pointers.values()];
+    gesture = {
+      mode:'pinch', startDist:Math.max(dist(p1,p2), 1),
+      startZoom:state.view.zoom, startMid:mid(p1,p2),
+      startView:{ ...state.view }
+    };
+    downInfo = null;
+    return;
+  }
+  if (pointers.size > 2) return;
+
+  const s = { x:e.clientX, y:e.clientY };
+  const hit = hitNode(s.x, s.y);
+  downInfo = { start:s, last:s, moved:false };
+  if (hit){ selectNode(hit.id); gesture = { mode:'node', id:hit.id }; }
+  else    { gesture = { mode:'pan' }; }
+});
+
+stage.addEventListener('pointermove', e => {
+  if (!pointers.has(e.pointerId)) return;
+  e.preventDefault();
+  pointers.set(e.pointerId, { x:e.clientX, y:e.clientY });
+
+  // 双指捏合：保持「起始中点」对应的世界点不动，并叠加中点位移
+  if (gesture && gesture.mode === 'pinch' && pointers.size >= 2){
+    const [p1, p2] = [...pointers.values()];
+    const d = Math.max(dist(p1,p2), 1), m = mid(p1,p2);
+    const z = clamp(gesture.startZoom * d / gesture.startDist, 0.25, 32);
+    const w = {
+      x:(gesture.startMid.x - gesture.startView.x) / gesture.startView.zoom,
+      y:(gesture.startMid.y - gesture.startView.y) / gesture.startView.zoom
+    };
+    state.view.zoom = z;
+    state.view.x = m.x - w.x * z;
+    state.view.y = m.y - w.y * z;
+    render();
+    return;
+  }
+
+  if (!gesture || !downInfo) return;
+  const dx = e.clientX - downInfo.last.x, dy = e.clientY - downInfo.last.y;
+  downInfo.last = { x:e.clientX, y:e.clientY };
+  if (Math.hypot(e.clientX-downInfo.start.x, e.clientY-downInfo.start.y) > 5) downInfo.moved = true;
+
+  if (gesture.mode === 'pan'){
+    state.view.x += dx; state.view.y += dy;
+    render();
+  } else if (gesture.mode === 'node'){
+    // 屏幕位移 → 世界位移 → 父局部位移（逆父旋转/缩放）
+    const n = find(gesture.id); if (!n) return;
+    const P = n.parentId != null ? worldMatrices(null).get(n.parentId) : identity();
+    const d = screenDeltaToLocal(dx/state.view.zoom, dy/state.view.zoom, P);
+    n.x += d.x; n.y += d.y;
+    updatePropValues(); render();
+  }
+});
+
+function endPointer(e){
+  const wasPinch = gesture && gesture.mode === 'pinch';
+  pointers.delete(e.pointerId);
+  if (wasPinch){
+    if (pointers.size < 2){ gesture = null; downInfo = null; }
+    return;
+  }
+  if (gesture && downInfo){
+    if (!downInfo.moved){
+      if (state.tool === 'add' && gesture.mode === 'pan'){
+        addNodeAt(downInfo.start.x, downInfo.start.y);
+      } else if (gesture.mode === 'pan' && state.tool === 'select'){
+        selectNode(null);
+      }
+    }
+    if (gesture.mode === 'node'){ syncPoseToFrame(); scheduleTimelineRefresh(); }
+  }
+  if (pointers.size === 0){ gesture = null; downInfo = null; }
+}
+stage.addEventListener('pointerup', endPointer);
+stage.addEventListener('pointercancel', endPointer);
+
+// 桌面端滚轮缩放（同样以光标位置为锚点）
+stage.addEventListener('wheel', e => {
+  e.preventDefault();
+  const s = { x:e.clientX, y:e.clientY }, w = screenToWorld(s.x, s.y);
+  const z = clamp(state.view.zoom * (e.deltaY < 0 ? 1.15 : 1/1.15), 0.25, 32);
+  state.view.zoom = z;
+  state.view.x = s.x - w.x*z; state.view.y = s.y - w.y*z;
+  render();
+}, { passive:false });
+
+/* ---------- 5. 素材导入与自定义锚点拾取 ---------- */
+function handleFiles(files){
+  let pending = 0;
+  [...files].forEach(file => {
+    if (!/image\//.test(file.type)) return;
+    pending++;
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const a = { name:file.name, img, w:img.naturalWidth, h:img.naturalHeight, edgeCache:new Map() };
+      // 需求：导入时即通过离屏 Canvas 预处理一次，之后渲染只读缓存
+      a.edgeCache.set(state.edgePixels, buildEdgeCache(a, state.edgePixels));
+      state.assets.push(a);
+      pending--;
+      refreshAssets(); invalidateBBox(); render();
+      if (pending === 0) toast(`已导入 ${state.assets.length} 张素材`);
+    };
+    img.onerror = () => { pending--; toast('有一张图片读取失败'); };
+    img.src = url;   // 保留 objectURL 直到页面关闭，避免图片失效
+  });
+}
+
+function refreshAssets(){
+  const box = $('#assetList'); box.innerHTML = '';
+  state.assets.forEach((a, i) => {
+    const el = document.createElement('div');
+    el.className = 'asset';
+    const cv = document.createElement('canvas');
+    cv.width = 56; cv.height = 48;
+    const c = cv.getContext('2d');
+    c.imageSmoothingEnabled = false;
+    const s = Math.min(cv.width/a.w, cv.height/a.h);
+    c.drawImage(getRenderImage(a), (cv.width-a.w*s)/2, (cv.height-a.h*s)/2, a.w*s, a.h*s);
+    const nm = document.createElement('span'); nm.textContent = a.name;
+    el.append(cv, nm);
+    el.title = `${a.name} · ${a.w}×${a.h}px · 点击挂载到选中节点`;
+    el.addEventListener('click', () => {
+      const n = getSelected();
+      if (!n){ toast('请先在画布上选中一个节点'); $('#propPanel').classList.remove('collapsed'); return; }
+      openPicker(n.id, i);
+    });
+    box.appendChild(el);
+  });
+}
+
+/* 打开锚点拾取层：把原图按整数倍放大（nearest），点哪一像素就取哪一像素 */
+function autoMag(a){
+  const availW = Math.max(120, window.innerWidth - 40);
+  const availH = Math.max(120, window.innerHeight - 200);
+  return clamp(Math.floor(Math.min(availW/a.w, availH/a.h)), 1, 24);
+}
+function openPicker(nodeId, assetIdx){
+  state.pickNodeId = nodeId; state.pickAssetIdx = assetIdx; state.pickerMag = null;
+  $('#pivotOverlay').classList.remove('hidden');
+  drawPicker();
+}
+function closePicker(){ $('#pivotOverlay').classList.add('hidden'); }
+
+function drawPicker(){
+  const a = findAsset(state.pickAssetIdx); if (!a) return;
+  const mag = state.pickerMag || autoMag(a);
+  const cv = $('#pivotCanvas');
+  cv.width = a.w * mag; cv.height = a.h * mag;
+  cv.style.width = cv.width + 'px'; cv.style.height = cv.height + 'px';
+  const c = cv.getContext('2d');
+  c.imageSmoothingEnabled = false;                 // 关键：最近邻放大
+  // 逐像素棋盘底，方便辨认透明区
+  c.clearRect(0, 0, cv.width, cv.height);
+  for (let y = 0; y < a.h; y++)
+    for (let x = 0; x < a.w; x++){
+      c.fillStyle = ((x + y) & 1) ? '#E7E9EF' : '#F7F7F9';
+      c.fillRect(x*mag, y*mag, mag, mag);
+    }
+  // 锚点拾取始终基于「原始 PNG」，不受边缘拉伸缓存影响，保证整数像素坐标准确
+  c.drawImage(a.img, 0, 0, cv.width, cv.height);
+  // 放大到一定倍数后画出像素网格
+  if (mag >= 6){
+    c.strokeStyle = 'rgba(60,70,90,.14)'; c.lineWidth = 1;
+    c.beginPath();
+    for (let x = 0; x <= a.w; x++){ c.moveTo(x*mag+.5, 0); c.lineTo(x*mag+.5, cv.height); }
+    for (let y = 0; y <= a.h; y++){ c.moveTo(0, y*mag+.5); c.lineTo(cv.width, y*mag+.5); }
+    c.stroke();
+  }
+  $('#pivotHint').textContent = `${a.name} · 原图 ${a.w}×${a.h}px · 放大 ${mag}× · 点击任意像素设为锚点`;
+}
+
+$('#pivotCanvas').addEventListener('pointerdown', e => {
+  const a = findAsset(state.pickAssetIdx); if (!a) return;
+  const r = e.currentTarget.getBoundingClientRect();
+  // 用比例换算，兼容 canvas 被 CSS 缩放 / 容器滚动的情况
+  const px = clamp(Math.floor(((e.clientX - r.left)/r.width)  * a.w), 0, a.w - 1);
+  const py = clamp(Math.floor(((e.clientY - r.top )/r.height) * a.h), 0, a.h - 1);
+  const n = find(state.pickNodeId);
+  if (n){
+    n.img = state.pickAssetIdx;
+    n.pivot = { x:px, y:py };   // 整数像素，杜绝半像素插值模糊
+    invalidateBBox(); syncPoseToFrame();
+  }
+  closePicker(); refreshProps(); render(); scheduleTimelineRefresh();
+  toast(`锚点已设为 (${px}, ${py})`);
+});
+$('#magPlus').onclick  = () => { const a=findAsset(state.pickAssetIdx); if(a){ state.pickerMag=clamp((state.pickerMag||autoMag(a))*2,1,32); drawPicker(); } };
+$('#magMinus').onclick = () => { const a=findAsset(state.pickAssetIdx); if(a){ state.pickerMag=clamp(Math.floor((state.pickerMag||autoMag(a))/2),1,32); drawPicker(); } };
+$('#pivotCancel').onclick = closePicker;
+
+/* ---------- 6. 节点编辑与参数面板 ---------- */
+function makeNode(worldPt){
+  const parentId = $('#attachToSelected').checked && state.selectedId != null ? state.selectedId : null;
+  const P = parentId != null ? worldMatrices(null).get(parentId) : identity();
+  const det = P.a*P.d - P.b*P.c || 1e-8;
+  // 世界点反解成父局部坐标，保证节点正好落在手指点击处
+  const lx = ( P.d*(worldPt.x-P.e) - P.c*(worldPt.y-P.f)) / det;
+  const ly = (-P.b*(worldPt.x-P.e) + P.a*(worldPt.y-P.f)) / det;
+  const id = state.idSeed++;
+  return { id, name:'骨骼 ' + id, x:Math.round(lx), y:Math.round(ly),
+           rotation:0, scale:1, parentId, img:null, pivot:{x:0,y:0} };
+}
+function addNodeAt(sx, sy){
+  const n = makeNode(screenToWorld(sx, sy));
+  state.nodes.push(n);
+  selectNode(n.id);
+  invalidateBBox(); syncPoseToFrame(); render(); scheduleTimelineRefresh();
+  toast(`已创建「${n.name}」`);
+}
+function selectNode(id){
+  state.selectedId = id;
+  refreshProps(); render();
+}
+function deleteNode(){
+  const n = getSelected(); if (!n) return;
+  const mats = worldMatrices(null);
+  // 子节点改挂到被删节点的父上，并保持世界变换
+  state.nodes.filter(v => v.parentId === n.id).forEach(c => reparentKeepWorld(c, n.parentId, mats));
+  state.nodes = state.nodes.filter(v => v.id !== n.id);
+  selectNode(null); invalidateBBox(); syncPoseToFrame(); render(); scheduleTimelineRefresh();
+  toast('节点已删除');
+}
+
+function refreshProps(){
+  const n = getSelected();
+  $('#noNode').classList.toggle('hidden', !!n);
+  $('#propBody').classList.toggle('hidden', !n);
+  if (!n) return;
+  $('#nodeName').textContent = `${n.name}  ·  id ${n.id}`;
+  // 父节点下拉：排除自己与自己的后代，避免成环
+  const sel = $('#parentSel');
+  sel.innerHTML = '<option value="">（根节点 · 无父）</option>';
+  state.nodes.forEach(o => {
+    if (isDescendant(o.id, n.id)) return;
+    const op = document.createElement('option');
+    op.value = o.id; op.textContent = o.name;
+    if (o.id === n.parentId) op.selected = true;
+    sel.appendChild(op);
+  });
+  const a = n.img != null ? findAsset(n.img) : null;
+  $('#imgInfo').textContent = a
+    ? `${a.name} (${a.w}×${a.h}) · 锚点 (${n.pivot.x}, ${n.pivot.y})`
+    : '未挂载图片';
+  updatePropValues();
+}
+/* 拖动节点时只更新数值，不重建下拉，避免丢焦点 */
+function updatePropValues(){
+  const n = getSelected(); if (!n) return;
+  $('#rot').value = Math.round(n.rotation);           $('#rotVal').textContent = Math.round(n.rotation) + '°';
+  $('#scale').value = n.scale;                       $('#scaleVal').textContent = n.scale.toFixed(2);
+  $('#posX').value = Math.round(n.x);
+  $('#posY').value = Math.round(n.y);
+  syncAllRanges();          // 帧硬切换后同步轨道进度条
+}
+
+/* ---------- 7. 关键帧时间轴（硬切换，无补间） ----------
+ * pose = { [nodeId]: {x,y,rotation,scale} }
+ * 播放只是按 duration 用 setTimeout 逐帧 applyFrame，帧与帧之间没有任何插值。
+ * 当选中某一帧时，画布上的任何编辑会自动同步回该帧（等价于「摆好后即记录」）。
+ */
+function snapshotPose(){
+  const p = {};
+  state.nodes.forEach(n => { p[n.id] = { x:n.x, y:n.y, rotation:n.rotation, scale:n.scale }; });
+  return p;
+}
+function syncPoseToFrame(){
+  if (state.selectedFrame >= 0 && state.frames[state.selectedFrame]){
+    state.frames[state.selectedFrame].pose = snapshotPose();
+    state.frames[state.selectedFrame].duration = clamp(+$('#durInput').value || 100, 16, 5000);
+    invalidateBBox();
+  }
+}
+function afterPoseChange(){
+  invalidateBBox();          // 姿态变化会影响导出包围盒，缓存必须失效
+  syncPoseToFrame(); render(); scheduleTimelineRefresh();
+}
+function applyFrame(i){
+  const f = state.frames[i]; if (!f) return;
+  state.selectedFrame = i;
+  // 硬切换：直接把快照赋值给节点，没有 lerp / easing
+  state.nodes.forEach(n => {
+    const p = f.pose[n.id];
+    if (p){ n.x=p.x; n.y=p.y; n.rotation=p.rotation; n.scale=p.scale; }
+  });
+  $('#durInput').value = f.duration;
+  refreshProps(); render(); refreshTimeline();
+}
+function addFrame(){
+  state.frames.push({ duration:clamp(+$('#durInput').value || 100, 16, 5000), pose:snapshotPose() });
+  state.selectedFrame = state.frames.length - 1;
+  invalidateBBox(); render(); refreshTimeline();
+  toast(`已添加第 ${state.frames.length} 帧`);
+}
+function overwriteFrame(){
+  if (state.selectedFrame < 0){ addFrame(); return; }
+  syncPoseToFrame(); invalidateBBox(); refreshTimeline(); toast('当前帧已覆盖');
+}
+function deleteFrame(){
+  if (state.selectedFrame < 0){ toast('请先选中一帧'); return; }
+  state.frames.splice(state.selectedFrame, 1);
+  state.selectedFrame = Math.min(state.selectedFrame, state.frames.length - 1);
+  invalidateBBox(); refreshTimeline();
+  if (state.selectedFrame >= 0) applyFrame(state.selectedFrame);
+}
+function play(){
+  if (state.playing){ stopPlay(); return; }
+  if (!state.frames.length){ toast('请先添加关键帧'); return; }
+  state.playing = true; $('#btnPlay').textContent = '■ 停止'; $('#btnPlay').classList.add('on');
+  let i = 0;
+  const step = () => {
+    if (!state.playing) return;
+    const idx = i % state.frames.length;
+    applyFrame(idx);                                  // 纯硬切，无补间
+    const d = state.frames[idx].duration || 100;
+    state.playTimer = setTimeout(() => { i++; step(); }, d);
+  };
+  step();
+}
+function stopPlay(){
+  state.playing = false; clearTimeout(state.playTimer);
+  $('#btnPlay').textContent = '▶ 播放'; $('#btnPlay').classList.remove('on');
+}
+
+/* 帧缩略图：把该帧姿态按统一包围盒等比缩到小画布里 */
+function renderThumb(cv, pose){
+  const b = unionBBox(), W = b.maxX-b.minX, H = b.maxY-b.minY;
+  const c = cv.getContext('2d');
+  c.setTransform(1,0,0,1,0,0);
+  c.clearRect(0,0,cv.width,cv.height);
+  c.imageSmoothingEnabled = false;
+  const s = Math.min(cv.width/W, cv.height/H);
+  c.setTransform(s, 0, 0, s,
+    (cv.width - W*s)/2 - b.minX*s,
+    (cv.height - H*s)/2 - b.minY*s);
+  renderPose(c, pose);
+}
+let tlRefreshPending = false;
+function scheduleTimelineRefresh(){
+  if (tlRefreshPending) return;
+  tlRefreshPending = true;
+  requestAnimationFrame(() => { tlRefreshPending = false; refreshTimeline(); });
+}
+function refreshTimeline(){
+  const strip = $('#frameStrip'); strip.innerHTML = '';
+  state.frames.forEach((f, i) => {
+    const card = document.createElement('div');
+    card.className = 'frame-card' + (i === state.selectedFrame ? ' active' : '');
+    const cv = document.createElement('canvas'); cv.width = 52; cv.height = 52;
+    renderThumb(cv, f.pose);
+    const lb = document.createElement('span'); lb.textContent = `#${i+1} · ${f.duration}ms`;
+    card.append(cv, lb);
+    card.addEventListener('click', () => { stopPlay(); applyFrame(i); });
+    strip.appendChild(card);
+  });
+  $('#frameCount').textContent = `${state.frames.length} 帧`;
+}
+
+/* ---------- 8. 导出：包围盒 → Sprite Sheet → Godot 4 JSON ---------- */
+/* 用「几何包围盒」而不是读像素：把每张图的四个角经过世界矩阵变换，
+ * 取所有帧的并集。这样每帧尺寸完全一致、原点对齐，Godot 里直接按
+ * 固定 region 横向切片即可，不会出现帧间角色抖动。 */
+function frameBBox(pose){
+  const mats = worldMatrices(pose);
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, any = false;
+  for (const n of state.nodes){
+    if (pose && !pose[n.id]) continue;
+    const a = n.img != null ? findAsset(n.img) : null;
+    if (!a || !a.img) continue;
+    const M = mats.get(n.id); if (!M) continue;
+    // 绘制时先 translate(-pivot)，所以四个角是 (-px,-py) … (w-px,h-py)
+    const px = n.pivot.x, py = n.pivot.y;
+    const corners = [[-px,-py],[a.w-px,-py],[a.w-px,a.h-py],[-px,a.h-py]];
+    for (const [x,y] of corners){
+      const wx = M.a*x + M.c*y + M.e, wy = M.b*x + M.d*y + M.f;
+      minX = Math.min(minX,wx); minY = Math.min(minY,wy);
+      maxX = Math.max(maxX,wx); maxY = Math.max(maxY,wy); any = true;
+    }
+  }
+  if (!any) return null;
+  return { minX:Math.floor(minX)-2, minY:Math.floor(minY)-2,
+           maxX:Math.ceil(maxX)+2,  maxY:Math.ceil(maxY)+2 };
+}
+function unionBBox(){
+  if (bboxCache) return bboxCache;
+  let b = null;
+  const poses = state.frames.length ? state.frames.map(f => f.pose) : [snapshotPose()];
+  for (const p of poses){
+    const q = frameBBox(p); if (!q) continue;
+    if (!b) b = { ...q };
+    else {
+      b.minX = Math.min(b.minX,q.minX); b.minY = Math.min(b.minY,q.minY);
+      b.maxX = Math.max(b.maxX,q.maxX); b.maxY = Math.max(b.maxY,q.maxY);
+    }
+  }
+  b = b || { minX:0, minY:0, maxX:64, maxY:64 };   // 无图片时给一个空白帧兜底
+  bboxCache = b;
+  return b;
+}
+
+function download(blob, name){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function exportAll(){
+  if (!state.frames.length){ toast('请先在时间轴添加至少一帧'); return; }
+  stopPlay();
+  const b = unionBBox();
+  const fw = Math.max(1, b.maxX - b.minX), fh = Math.max(1, b.maxY - b.minY);
+  const sheetW = fw * state.frames.length;
+  if (sheetW > 8192 || fh > 8192){
+    if (!confirm(`图集尺寸 ${sheetW}×${fh} 较大，部分设备可能导出失败，仍要继续吗？`)) return;
+  }
+
+  /* 8.1 生成透明背景的横向精灵图集。
+   *     每帧用同一个 bbox 偏移，因此第 i 帧起始 X = i*frameW，Y = 0。 */
+  const sheet = document.createElement('canvas');
+  sheet.width = sheetW; sheet.height = fh;
+  const sc = sheet.getContext('2d');
+  sc.imageSmoothingEnabled = false;
+  state.frames.forEach((f, i) => {
+    sc.save();
+    // 绝对变换：世界点 (b.minX, b.minY) → 画布 (i*fw, 0)
+    sc.setTransform(1, 0, 0, 1, i*fw - b.minX, -b.minY);
+    renderPose(sc, f.pose);
+    sc.restore();
+  });
+
+  /* 8.2 组装贴合 Godot 4 AtlasTexture 导入逻辑的 JSON。
+   *     - frames[i].frame / atlas_texture.region 直接可作为 AtlasTexture 的 region
+   *     - duration 毫秒与秒两种都给：SpriteFrames.add_frame 的第三个参数用「秒」
+   *     - meta.import_hint 说明导入时关闭线性过滤，保持像素锐利 */
+  const json = {
+    meta: {
+      app: 'PixelBone Studio', version: '2.0',
+      image: 'spritesheet.png', format: 'RGBA8888',
+      size: { w: sheetW, h: fh }, scale: 1,
+      frame_size: { w: fw, h: fh },
+      frame_origin: { x: -b.minX, y: -b.minY },
+      frame_count: state.frames.length,
+      filter: 'nearest', interpolation: 'hard_switch_no_tween',
+      edge_stretch: { enabled: state.edgeEnabled, pixels: state.edgePixels, method: 'alpha_nearest_copy_no_interpolation' },
+      import_hint: {
+        texture_filter: 'Nearest（导入器关闭线性过滤，保证像素边缘锐利）',
+        atlas_texture: '为每帧创建 AtlasTexture，atlas 指向 res://spritesheet.png，region = frames[i].frame',
+        sprite_frames: "SpriteFrames.add_frame('default', atlas_texture, duration_sec)"
+      }
+    },
+    frames: state.frames.map((f, i) => ({
+      index: i,
+      filename: `frame_${i}.png`,
+      frame: { x: i*fw, y: 0, w: fw, h: fh },   // 图集中的起始坐标与宽高
+      rotated: false, trimmed: false,
+      spriteSourceSize: { x: -b.minX, y: -b.minY, w: fw, h: fh },
+      sourceSize: { w: fw, h: fh },
+      duration: f.duration,                       // 毫秒
+      duration_sec: +(f.duration/1000).toFixed(4),// Godot 使用秒
+      atlas_texture: {
+        type: 'AtlasTexture',
+        atlas: 'res://spritesheet.png',
+        region: { x: i*fw, y: 0, w: fw, h: fh },
+        filter_clip: true
+      }
+    })),
+    // 可直接遍历喂给 Godot 4 的 SpriteFrames
+    godot_sprite_frames: {
+      animation: 'default',
+      frames: state.frames.map((f, i) => ({
+        texture_index: i,
+        atlas_region: [i*fw, 0, fw, fh],
+        duration: +(f.duration/1000).toFixed(4)
+      }))
+    },
+    // 附赠骨架静态绑定信息（层级 / 图片 / 自定义锚点），方便在 Godot 里还原节点树
+    bones: state.nodes.map(n => ({
+      id: n.id, name: n.name, parent: n.parentId,
+      image: n.img != null ? state.assets[n.img].name : null,
+      pivot: { x:n.pivot.x, y:n.pivot.y },
+      rest: { x:n.x, y:n.y, rotation:n.rotation, scale:n.scale }
+    })),
+    animation_poses: state.frames.map(f => f.pose)
+  };
+
+  // 先下图集，稍后再下 JSON，避免移动端浏览器拦截连续下载
+  sheet.toBlob(blob => {
+    if (!blob){ toast('PNG 生成失败，请减少帧数或缩小图片'); return; }
+    download(blob, 'spritesheet.png');
+    setTimeout(() => {
+      download(new Blob([JSON.stringify(json, null, 2)], { type:'application/json' }), 'animation.json');
+      toast(`已导出 ${state.frames.length} 帧 · ${sheetW}×${fh}`);
+    }, 350);
+  }, 'image/png');
+}
+
+/* ---------- 9. 初始化与事件绑定 ---------- */
+/* 按时间轴真实高度给浮动面板留白：折叠/展开与转屏后重算，
+ * 保证面板底部的按钮不会被时间轴盖住，也不遮挡中间画布操作。 */
+function updatePanelBottom(){
+  const h = $('#timeline').getBoundingClientRect().height || 150;
+  document.documentElement.style.setProperty('--tl-h', (h + 12) + 'px');
+}
+
+function setTool(t){
+  state.tool = t;
+  $('#toolSelect').classList.toggle('on', t === 'select');
+  $('#toolAdd').classList.toggle('on', t === 'add');
+}
+function togglePanel(id, forceOpen){
+  const p = document.getElementById(id);
+  // forceOpen 传布尔值时为「强制展开/强制收起」，不传则按当前状态切换
+  const willOpen = (forceOpen === true || forceOpen === false)
+    ? forceOpen
+    : p.classList.contains('collapsed');
+  // 窄屏下同时只展开一块侧面板，避免遮挡画布
+  if (willOpen){
+    ['assetPanel','propPanel'].forEach(other => {
+      if (other !== id) document.getElementById(other).classList.add('collapsed');
+    });
+  }
+  p.classList.toggle('collapsed', !willOpen);
+  p.querySelector('.caret').textContent = willOpen ? '▾' : '▸';
+  $('#btnAsset').classList.toggle('on', !$('#assetPanel').classList.contains('collapsed'));
+  $('#btnProp').classList.toggle('on', !$('#propPanel').classList.contains('collapsed'));
+}
+
+function init(){
+  // 工具条
+  $('#toolSelect').onclick = () => setTool('select');
+  $('#toolAdd').onclick    = () => setTool('add');
+  $('#btnUpload').onclick  = () => $('#fileInput').click();
+  $('#btnUpload2').onclick = () => $('#fileInput').click();
+  $('#btnReset').onclick   = resetView;
+  $('#btnPlay').onclick    = play;
+  $('#btnExport').onclick  = exportAll;
+  $('#btnAsset').onclick   = () => togglePanel('assetPanel');
+  $('#btnProp').onclick    = () => togglePanel('propPanel');
+  document.querySelectorAll('[data-toggle]').forEach(h => {
+    h.onclick = () => togglePanel(h.dataset.toggle);
+  });
+
+  $('#fileInput').onchange = e => { handleFiles(e.target.files); e.target.value = ''; };
+
+  // 自定义主题色：动态改写 :root 的 --primary，实现全局即时换肤
+  $('#colorPicker').addEventListener('input', e => applyTheme(e.target.value));
+  // 所有 range 的进度条随拖动实时更新
+  document.querySelectorAll('input[type=range]').forEach(el => {
+    el.addEventListener('input', () => syncRangeFill(el));
+  });
+
+  // 边缘拉伸：开关只切换渲染源，滑块调整时重做离屏预处理
+  $('#edgeEnabled').addEventListener('change', e => {
+    state.edgeEnabled = e.target.checked;
+    invalidateBBox(); refreshAssets(); render(); scheduleTimelineRefresh();
+    toast(state.edgeEnabled ? `边缘拉伸已开启 · 外扩 ${state.edgePixels}px` : '边缘拉伸已关闭');
+  });
+  $('#edgePixels').addEventListener('input', e => {
+    state.edgePixels = clamp(+e.target.value, 0, 4);
+    $('#edgeVal').textContent = state.edgePixels + ' px';
+    rebuildEdgeCaches();     // 滑块调整 → 立即对所有素材重新预处理
+  });
+
+  // 时间轴
+  $('#btnAddFrame').onclick  = addFrame;
+  $('#btnOverwrite').onclick = overwriteFrame;
+  $('#btnDelFrame').onclick  = deleteFrame;
+  $('#durInput').onchange = () => {
+    if (state.selectedFrame >= 0 && state.frames[state.selectedFrame]){
+      state.frames[state.selectedFrame].duration = clamp(+$('#durInput').value || 100, 16, 5000);
+      refreshTimeline();
+    }
+  };
+  $('#btnTl').onclick = () => {
+    const t = $('#timeline');
+    t.classList.toggle('collapsed');
+    $('#btnTl').textContent = t.classList.contains('collapsed') ? '▴ 展开' : '▾ 折叠';
+    updatePanelBottom();
+  };
+
+  // 参数面板
+  $('#rot').addEventListener('input', e => {
+    const n = getSelected(); if (!n) return;
+    n.rotation = +e.target.value; $('#rotVal').textContent = n.rotation + '°';
+    afterPoseChange();
+  });
+  $('#scale').addEventListener('input', e => {
+    const n = getSelected(); if (!n) return;
+    n.scale = +e.target.value; $('#scaleVal').textContent = n.scale.toFixed(2);
+    afterPoseChange();
+  });
+  ['posX','posY'].forEach(id => {
+    $('#'+id).addEventListener('input', e => {
+      const n = getSelected(); if (!n) return;
+      const v = parseFloat(e.target.value); if (Number.isNaN(v)) return;
+      if (id === 'posX') n.x = v; else n.y = v;
+      afterPoseChange();
+    });
+  });
+  $('#parentSel').onchange = e => {
+    const n = getSelected(); if (!n) return;
+    reparentKeepWorld(n, e.target.value === '' ? null : +e.target.value);
+    invalidateBBox(); afterPoseChange(); refreshProps();
+  };
+  $('#btnRepick').onclick = () => {
+    const n = getSelected();
+    if (n && n.img != null) openPicker(n.id, n.img);
+    else toast('请先挂载一张图片');
+  };
+  $('#btnClearImg').onclick = () => {
+    const n = getSelected(); if (!n) return;
+    n.img = null; n.pivot = {x:0,y:0};
+    invalidateBBox(); afterPoseChange(); refreshProps();
+  };
+  $('#btnDelNode').onclick = deleteNode;
+
+  // 键盘快捷键（桌面端）：A 加帧 / 空格播放 / Delete 删节点
+  window.addEventListener('keydown', e => {
+    if (/^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName)) return;
+    if (e.key === 'Delete' || e.key === 'Backspace'){ e.preventDefault(); deleteNode(); }
+    else if (e.key === ' '){ e.preventDefault(); play(); }
+    else if (e.key.toLowerCase() === 'a'){ addFrame(); }
+  });
+  /* 屏幕旋转 / 尺寸变化：重算画布像素尺寸并重置视图中心与缩放，
+   * 防止 DPR 或宽高变化后世界坐标与手指位置错位。加短防抖避免转屏抖动。 */
+  let viewportTimer = null;
+  const onViewportChange = () => {
+    clearTimeout(viewportTimer);
+    viewportTimer = setTimeout(() => {
+      resize();
+      resetView();          // 重置中心 + zoom=4
+      refreshTimeline();
+      updatePanelBottom();
+    }, 120);
+  };
+  window.addEventListener('resize', onViewportChange);
+  window.addEventListener('orientationchange', onViewportChange);
+
+  // 初始状态：视图居中 + 一个默认根节点，方便立刻上传图片挂载
+  resize();
+  resetView();
+  const root = makeNode({ x:0, y:0 });
+  root.name = '根骨骼';
+  state.nodes.push(root);
+  selectNode(root.id);
+  togglePanel('assetPanel', false);
+  togglePanel('propPanel', false);
+  // 应用默认主题色，并初始化所有滑块进度与 Canvas 高亮色
+  applyTheme($('#colorPicker').value);
+  syncAllRanges();
+  refreshAssets(); refreshTimeline(); updatePanelBottom(); render();
+}
+init();
+</script>
+</body>
+</html>
